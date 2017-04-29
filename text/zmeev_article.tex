@@ -443,6 +443,31 @@ L = \frac{1}{N}\sum_{k = 1}^N\sum_{j \neq y_k}\max{(0, \xk^T\wk - \xk^T\bm{w_{y_
 \item $\lambda$ - коэффициент перед весами. Чем он больше, тем сильнее регуляризируются веса.
 \end{enumerate}
 
+\subsection{Реализация}
+Создан отдельный класс \textbf{many\_weight\_linear\_model}. Для SVM требуется реализовать подсчёт функции потерь и её градиента. Само проведение шагов снова оставлено на \textbf{scipy.optimize}. Метод, считающий функцию потерь - \textbf{svm\_lost(self, X, y, W, b)}, где под y подразумевается вектор номеров классов, имеющий значения от нуля до $M - 1$, W - вектор весов, b - вектор сдвигов(В разделе с многоклассовой классификацией нет надобности в упрощении, убирающем b). Реализация \textbf{svm\_lost(self, X, y, W, b)}:
+
+\begin{lstlisting}
+ def loss_svm(self, X, y, W, b):
+	N = X.shape[0]
+	scores = X.dot(W) + b
+	right_scores = scores[np.arange(N), y].reshape([N, 1])
+	margins = np.maximum(0, scores - right_scores + self.delta)
+	margins[np.arange(N), y] = 0
+	return np.sum(margins) / N + self.lmda * np.sum(W)
+\end{lstlisting}
+
+Реализация \textbf{derivative\_svm(self, X, y, W, b)}:
+\begin{lstlisting}
+def derivative_svm(self, X, y, W, b):
+	N = X.shape[0]
+	scores = X.dot(W) + b
+	right_scores = scores[np.arange(N), y].reshape([N, 1])
+	margins = np.maximum(0, scores - right_scores + self.delta)
+	margins[np.arange(N), y] = 0
+\end{lstlisting}
+
+
+
 \section{Softmax}
 \subsection{Постановка задачи}
 Та же, что в SVM.
