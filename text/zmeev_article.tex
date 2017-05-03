@@ -12,6 +12,7 @@
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage{graphicx}
+\graphicspath{ {/home/maxim/study/my_project/linear_classifiers/notebooks/} }
 
 \newcommand{\ik}{I(\wk)}
 \newcommand{\w}{\bm{w}}
@@ -444,42 +445,33 @@ L = \frac{1}{N}\sum_{k = 1}^N\sum_{j \neq y_k}\max{(0, \xk^T\wk - \xk^T\bm{w_{y_
 \end{enumerate}
 
 \subsection{Реализация}
-Создан отдельный класс \textbf{many\_weight\_linear\_model}. Для SVM требуется реализовать подсчёт функции потерь и её градиента. Само проведение шагов снова оставлено на \textbf{scipy.optimize}. Метод, считающий функцию потерь - \textbf{svm\_lost(self, X, y, W)}, где под y подразумевается вектор номеров классов, имеющий значения от нуля до $M - 1$, W - вектор весов. Реализация \textbf{prepare\_svm(self, X, y)}:
+Создан отдельный класс \textbf{many\_weight\_linear\_model}. Для SVM требуется реализовать подсчёт функции потерь и её градиента. Снова нужна подготовка данных. Реализация \textbf{prepare\_svm(self, X, y)}:
 
 \begin{lstlisting}
-def prepare_svm(self, X, y):
+def prepare_data(self, X, y):
 	X = np.array(X)
 	y = np.array(y).astype(int)
 	X = np.concatenate((X, np.ones([X.shape[0], 1])), axis=1)
 	self.N = X.shape[0]
 	self.D = X.shape[1]
 	self.M = np.unique(y).shape[0]
-	self.W = np.random.normal(0, 1, size=[self.D, self.M])
+	self.W = np.random.randn(X.shape[1], np.max(y) + 1) / np.sqrt(X.shape[1] / 2)
+	self.t = 0
+	self.m = np.zeros(self.W.shape)
+	self.v = np.zeros(self.W.shape)
 	return X, y
 \end{lstlisting}
 
-Метод доабвляет единичные признаки, преобразует y в тип int, чтобы можно было поизводить индексирование по нему, инициализирует все стандартные характеристики данных.
-
-Реализация \textbf{svm\_loss(self, X, y, W, b)}:
-
+В этом классификаторе и следующем для минимизации градиентного спуска используется метод минимизации \textit{adam}. Для его реализации нужно уметь подсчитывать градиент функции потерь. Функция, вычисляющая градиент и сами потери, названа \textbf{loss\_and\_grad\_svm(self, X, y)}.
 \begin{lstlisting}
-def loss_svm(self, X, y, W, b):
-	scores = X.dot(W)
+def loss_and_grad_svm(self, X, y):
+	scores = X.dot(self.W)
 	right_scores = scores[np.arange(self.N), y].reshape([self.N, 1])
 	margins = np.maximum(0, scores - right_scores + self.delta)
 	margins[np.arange(self.N), y] = 0
-	return np.sum(margins) / self.N + self.lmda * np.sum(W ** 2)
-\end{lstlisting}
-
-Метод по сути просто считает число оценок, которые на данном объекте больше, чем оценка истинного класса с небольшим сдвигом $\Delta$.
-
-Реализация \textbf{derivative\_svm(self, X, y, W, b)}:
-\begin{lstlisting}
-def derivative_svm(self, X, y, W):
-	scores = X.dot(W)
-	right_scores = scores[np.arange(self.N), y].reshape([self.N, 1])
-	margins = np.maximum(0, scores - right_scores + self.delta) > 0
-	margins[np.arange(self.N), y] = False
+	loss = np.sum(margins) / self.N + self.lmda * np.sum(self.W * self.W)
+        
+	margins = margins > 0
 	to_minus = np.sum(margins, axis=1)
 	coefs_0 = ((margins[:, 0] > 0) - to_minus * (y == 0)).reshape([self.N, 1])
 	derivatives = np.sum(X * coefs_0, axis=0)
@@ -487,32 +479,48 @@ def derivative_svm(self, X, y, W):
 	for i in np.arange(1, self.M):
 		coefs_i = ((margins[:, i] > 0) - to_minus * (y == i)).reshape([self.N, 1])
 		derivatives = np.concatenate((derivatives, [np.sum(X * coefs_i, axis=0)]))
-	return derivatives.T / self.N + 2 * self.lmda * W
+	dW = derivatives.T / self.N + 2 * self.lmda * self.W
+        
+	return loss, dW
 \end{lstlisting}
 
-И главные методы: \textbf{fit(self, X, y)} и \textbf{fit\_svm(self, X, y)}:
+Отдельно реализован метод \textbf{adam(self, X, y}. 
+\begin{lstlisting}
+def adam(self, X, y):
+	loss, dW = self.loss_and_grad(X, y)
+	self.t += 1
+	self.m = self.m * self.beta_1 + (1 - self.beta_1) * dW
+	self.v = self.v * self.beta_2 + (1 - self.beta_2) * dW * dW
+        
+	m = self.m / (1 - self.beta_1 ** self.t)
+	v = self.v / (1 - self.beta_2 ** self.t)
+	self.W -= self.learning_rate * self.m / (np.sqrt(self.v) + self.eps)
+\end{lstlisting}
 
+Метод \textbf{loss\_and\_grad} - обобщение того же для svm.
+\begin{lstlisting}
+def loss_and_grad(self, X, y):
+	if self.method == 'softmax':
+		return self.loss_and_grad_softmax(X, y)
+	else:
+		return self.loss_and_grad_svm(X, y)
+\end{lstlisting}
+
+Для простоты проводится просто 1000 итераций сдвига весов без анализа изменения функции потерь.
 \begin{lstlisting}
 def fit(self, X, y):
-	if self.method == 'svm':
-		self.fit_svm(X, y)
-		
-def fit_svm(self, X, y):
-	X, y = self.prepare_svm(X, y)
-	func = lambda W: self.loss_svm(X, y, W.reshape([self.D, self.M]))
-	W0 = self.W.reshape(self.D * self.M)
-	jac = lambda W: self.derivative_svm(X, y, W.reshape([self.D, self.M])).reshape([self.D * self.M])
-	self.W = opt.minimize(func, W0, method='BFGS', jac=jac).x.reshape([self.D, self.M])
+	X, y = self.prepare_data(X, y)
+	for step in range(1000):
+		self.adam(X, y)
 \end{lstlisting}
 
-Также для многоклассовой классификации написан метод \textbf{predict(self, X)}:
+Функция \textbf{predict} принимает новый вид:
 \begin{lstlisting}
 def predict(self, X):
 	X = np.concatenate((X, np.ones([X.shape[0],1])), axis=1)
 	scores = X.dot(self.W)
 	return np.argmax(scores, axis=1)
 \end{lstlisting}
-
 
 
 \section{Softmax}
@@ -556,32 +564,23 @@ p_k &= \frac{e^{f_{y_k}}}{\sum_je^{f_j}}     &       L_k &= -\log p_k
 \end{eqnarray}
 
 \subsection{Реализация}
-Для подготовки данных использовалась уже реализованная \textbf{prepare\_ data}. Далее по аналогии с остальными описаны методы для вычисления функции потерь, градиента и основной метод для обучения.
+Всё, что нужно для реализации - написать метод \textbf{loss\_and\_grad\_ softmax(self, X, y)}. Вся остальная часть заложена в уже реализованных \textbf{fit} и \textbf{adam}. 
 \begin{lstlisting}
-def loss_softmax(self, X, y, W):
-	scores = X.dot(W)
+def loss_and_grad_softmax(self, X, y):
+	scores = X.dot(self.W)
 	scores -= np.max(scores, axis=1, keepdims=True)
 	exp_scores = np.exp(scores)
 	probs = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
-	correct_logprobs = - np.log(probs[np.arange(self.N), y])
-	return np.sum(correct_logprobs) + self.lmda * np.sum(W * W)
-    
-def derivative_softmax(self, X, y, W):
-	scores = X.dot(W)
-	scores -= np.max(scores, axis=1, keepdims=True)
-	exp_scores = np.exp(scores)
-	probs = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
+	
+	correct_logprobs = - np.log(probs[np.arange(X.shape[0]), y])
+	loss = np.sum(correct_logprobs) + self.lmda * np.sum(self.W * self.W)
+        
 	dscores = probs
-	dscores[np.arange(self.N), y] -= 1
-	dscores /= self.N
-	return np.dot(X.T, dscores) + self.lmda * 2 * W
-    
-def fit_softmax(self, X, y):
-	X, y = self.prepare_data(X, y)
-	W0 = self.W.reshape(self.D * self.M)
-	func = lambda W: self.loss_softmax(X, y, W.reshape([self.D, self.M]))
-	jac = lambda W: self.derivative_softmax(X, y, W.reshape([self.D, self.M])).reshape([self.D * self.M])
-	self.W = opt.minimize(func, W0, method='BFGS').x.reshape([self.D, self.M])
+	dscores[np.arange(X.shape[0]), y] -= 1
+	dscores /= X.shape[0]
+	dW = np.dot(X.T, dscores) + self.lmda * 2 * self.W
+        
+	return loss, dW
 \end{lstlisting}
 
 \section{Сравнение на модельных данных}
@@ -589,12 +588,52 @@ def fit_softmax(self, X, y):
 Для начала стоит сравнить классификаторы на модельных данных. Были сгенерированы разные виды выборок:
 \begin{itemize}
 \item Выборка, имеющая 20 признаков. Для каждого признака $\E[x^1] = \Delta + \E[x^2]$, где верхний индекс - номер выборки. Объекты сгенерированы из нормального распределения, где $\E[x^1] = -0.5, \E[x^2] = 0.5, \mathbb{D}[x^i] = \sigma^2$, значение дисперсии изменяется в разных экспериментах, $\Delta = 1$.
-\item Датасет аналогичен первому, но есть три признак, данные для которого сгенерированы из одного распределения. Здесь тест покажет, могут классификаторы определять значимость признаков.
-\item Выборка, имеющая 5000 признаков.  Объекты сгенерированы из нормального распределения, где $\E[x^1] = -0.5, \E[x^2] = 0.5, \mathbb{D}[x^i] = \sigma^2$, значение дисперсии изменяется в разных экспериментах, $\Delta = 1$.
+\item Датасет аналогичен первому, но есть три признака, данные для которого сгенерированы из одного распределения. Здесь тест покажет, могут ли классификаторы определять значимость признаков.
+\item Выборка, имеющая 2000 признаков.  Объекты сгенерированы из нормального распределения, где $\E[x^1] = -0.5, \E[x^2] = 0.5, \mathbb{D}[x^i] = \sigma^2$, значение дисперсии изменяется в разных экспериментах, $\Delta = 1$.
 \item \textbf{The 20 newsgroups text dataset} - датасет из газетных статей на 20 разных тем. Чтобы сравнить сразу все классификаторы между собой, брались только статьи на 2 темы. Близость тем менялась.
 \item \textbf{breast cancer wisconsin dataset} - датасет по раковым больным в Висконсине.
 \end{itemize}
 Значение $\sigma$ менялось от 0.5 до 2, приложен график количества правильных ответов для каждого из классификаторов для разных дисперсий.
+
+\subsection{Первая выборка}
+В обучающей выборке - 400 объектор, в тестовой - 200. Проводилось по 5 тестов на одну дисперсию. Дисперсия менялась в диапазоне от 0.7 до 2. Параметры для тестирования:
+\begin{lstlisting}
+sigmas = np.linspace(0.7, 2, 14)
+m1 = -0.5
+m2 = 0.5
+train_size = 400
+test_size = 200
+tests_num = 5
+results = np.zeros([len(sigmas), 5])
+
+lin_m = mm.one_weight_linear_model(method='linprog')
+rel_m = mm.one_weight_linear_model(method='relax')
+log_m = mm.one_weight_linear_model(method='logistic')
+soft_m = mm.many_weight_linear_model(method='softmax')
+svn_m = mm.many_weight_linear_model(method='svm')
+models = [lin_m, rel_m, log_m, soft_m, svn_m]
+\end{lstlisting}
+
+Приведён график, на котором видно, как менялась доля верных предсказаний для каждого классификатора.
+
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=6cm]{first_dataset}
+\caption{График доли верных предсказаний для классификатров на 1 выборке}
+\end{figure}
+
+На тестах оказалось, что при увеличении числа признаков довольно сильно начинает проигрывать по веремни работы классификатор, отнованный на решении задачи линейного программирования и логистическая регрессия.
+
+Также его точно сильно нестабильна. Отбросим его для следующих датасетов с большим числом признаков.
+
+\subsection{Третья выборка}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=6cm]{third_dataset}
+\caption{График доли верных предсказаний для классификатров на 3 выборке}
+\end{figure}
 
 \newpage
 \section{Используемая литература}
