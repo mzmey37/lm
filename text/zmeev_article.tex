@@ -6,12 +6,12 @@
 \usepackage{amsfonts}
 \usepackage{amssymb}
 \usepackage{mathtools,bm,etoolbox}
-\usepackage{bm}
 \usepackage{indentfirst}
 \usepackage{hyperref}
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage{graphicx}
+\usepackage{float}
 \graphicspath{ {/home/maxim/study/my_project/linear_classifiers/notebooks/} }
 
 \newcommand{\ik}{I(\wk)}
@@ -614,26 +614,63 @@ svn_m = mm.many_weight_linear_model(method='svm')
 models = [lin_m, rel_m, log_m, soft_m, svn_m]
 \end{lstlisting}
 
-Приведён график, на котором видно, как менялась доля верных предсказаний для каждого классификатора.
+Приведён график \ref{pic:im1}, на котором видно, как менялась доля верных предсказаний для каждого классификатора.
 
-
-\begin{figure}[ht]
+\begin{figure}[H]
 \centering
-\includegraphics[width=6cm]{first_dataset}
+\includegraphics[width=10cm]{first_dataset}
 \caption{График доли верных предсказаний для классификатров на 1 выборке}
+\label{pic:im1}
 \end{figure}
 
 На тестах оказалось, что при увеличении числа признаков довольно сильно начинает проигрывать по веремни работы классификатор, отнованный на решении задачи линейного программирования и логистическая регрессия.
 
 Также его точно сильно нестабильна. Отбросим его для следующих датасетов с большим числом признаков.
 
+\subsection{Вторая выборка}
+
+Пример генерации выборки:
+
+\begin{lstlisting}
+X1 = np.concatenate((np.random.normal(loc=0.5, scale=sigmas[i], size=[int(train_size / 2), 17]),
+                    np.random.normal(loc=-0.5, scale=sigmas[i], size=[train_size - int(train_size / 2), 17]))) 
+X1 = np.concatenate((X1, np.random.normal(size=[train_size, 3])), axis=1)
+y1 = np.concatenate((np.ones(int(train_size / 2)), np.zeros(train_size - int(train_size / 2))), axis=0)
+\end{lstlisting}
+
+Тесты были проведены полностью аналогичные первым. В результате сформирован график точностей классификаторов \ref{pic:im2}. Видно, что все классификаторы работают с примерно одинаковой точностью.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=10cm]{second_dataset}
+\caption{График доли верных предсказаний для классификатров на 2 выборке}
+\label{pic:im2}
+\end{figure}
+
 \subsection{Третья выборка}
 
-\begin{figure}[ht]
+На данных с такой же дисперсией при большом числе признаков предсказания были верны на всех значениях, поэтому все значения \textbf{sigmas} были увеличены в 10 раз. График с результатами указан на рисунке \ref{pic:im3}.
+
+\begin{figure}[H]
 \centering
-\includegraphics[width=6cm]{third_dataset}
+\includegraphics[width=10cm]{third_dataset}
 \caption{График доли верных предсказаний для классификатров на 3 выборке}
+\label{pic:im3}
 \end{figure}
+
+
+\subsection{Пятая выборка}
+Датасет содержит 30 признаков, все они числовые, нет нужны в каких-либо преобразованиях, кроме центрирования и деления на стандартное отклонение. Было выбрано 25\% случайных объектов под тетсовую выборку, остальные использовались как обучающая выборка.
+
+Точность предсказаний указана на графике \ref{pic:im5}. Видно, что все классификаторы, кроме первого имеют примерно одинаковые результаты.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=10cm]{fifth_dataset}
+\caption{График доли верных предсказаний для классификатров на 3 выборке}
+\label{pic:im5}
+\end{figure}
+
 
 \newpage
 \section{Используемая литература}
