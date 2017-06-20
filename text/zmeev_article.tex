@@ -193,7 +193,7 @@ $$
 \item $part\_to\_exclude$ - доля неравенств, которую мы будем исключать из системы.
 \end{itemize}
 
-\subsubsection{Логистическая регрессия}
+\subsubsection{Аппроксимация гладкой функцией}
 
 Теперь хочется ускорить процесс обучения. Для этого нужно сделать функцию потерь $L$ непрерывно дифференцируемой. Хорошо подходит сигмоида:
 \begin{equation} \label{sigmoid}
@@ -277,7 +277,7 @@ H(p, q) = - \sum_x p(x)\log q(x)
 
 Итоговая функция потерь выглядит следующим образом:
 \begin{equation}
-L = \frac{1}{N}\sum_k \W^T\xk + R(W)
+L = \frac{1}{N}\sum_k L_k + R(W)
 \end{equation}
 
 \paragraph*{Практический совет:} из-за использования экспонент в функции потерь могут возникнуть проблемы с численными подсчётами, потому что значения $e^{f_j(\xk, \W)}$ могут оказаться очень большими. Для избежания этих проблем стоит сделать поправку на константу:
@@ -299,7 +299,7 @@ p_k &= \frac{e^{f_{y_k}}}{\sum_je^{f_j}}     &       L_k &= -\log p_k
 
 \section{Реализация методов}
 
-\subsection{Релаксационнный метод}
+\subsection{Реализация релаксационнного метода}
 
 Везде далее np - библиотека numpy, ускоряющая и упрощающая многие вычисления. Итак, приступим к реализации: создаётся свой класс, который называется \textbf{one\_weight\_linear\_model}, имеющий вектор весов $w$, число объектов \textbf{N}, число признаков \textbf{D}(включая константу), число шагов перед исключением неравенств \textbf{steps\_to\_exclude}, параметр $\theta$, который называется \textbf{theta}, параметр $\varepsilon$ : \textbf{eps} и долю исключающихся неравенств \textbf{part\_to\_exclude}, потому что, если исключать по одному неравенству на большом наборе данных, то слишом долго будет находиться решение. Вектор весов сначала пустой, так как размерность данных изначально неизвестна.
 \begin{lstlisting}
@@ -383,7 +383,7 @@ def predict(self, X):
 \end{lstlisting}
 
 
-\subsection{Сведение к линейному программированию}
+\subsection{Реализация метода сведения к линейному программированию}
 
 Для реализации данного метода нам нужно уметь решать задачи линейного программирования. Для этого будем использовать библиотеку python-a \textbf{scipy.optimize}, в которой реализована нужная нам функция \textbf{linprog}. Переписывать конструктор класса нам не нужно, потому что все нужные нам гиперпараметры уже присутствуют в том, который мы написали ранее.
 
@@ -458,7 +458,7 @@ def fit(self, X, y):
 		self.fit_using_linprog(X, y)
 \end{lstlisting}
 
-\subsection{Логистическая регрессия}
+\subsection{Реализация аппроксимации гладкой функцией}
 
 Для данной реализации также понадобится библиотека\\ \textbf{scipy.optimize}, из которой мы будем использовать функцию \textbf{minimize}.
 
@@ -477,9 +477,9 @@ def calc_grad_L(self, X, w):
 	return - X.T.dot(s * (1 - s))
 \end{lstlisting}
 
-И остаётся просто собрать всё в методе \textbf{fit\_logistic(self, X, y)}:
+И остаётся просто собрать всё вместе в методе \textbf{fit\_approx(self, X, y)}:
 \begin{lstlisting}
-def fit_logistic(self, X, y):
+def fit_approx(self, X, y):
 	X = self.prepare_data(X, y)
 	self.w = op.minimize(lambda w: self.calc_sigmoid_L(X, w), self.w,method='BFGS', jac=lambda w: self.calc_grad_L(X, w)).x
 \end{lstlisting}
@@ -491,13 +491,13 @@ def fit(self, X, y):
 		self.fit_using_relaxation(X, y)
 	elif self.method == 'linprog':
 		self.fit_using_linprog(X, y)
-	elif self.method == 'logistic':
-		self.fit_logistic(X, y)
+	elif self.method == 'approx':
+		self.fit_approx(X, y)
 	else:
 		print('No such method', self.method)
 \end{lstlisting}
 
-\subsection{Метод опорных векторов (SVM)}
+\subsection{Реализация метода опорных векторов (SVM)}
 
 Создан отдельный класс \textbf{many\_weight\_linear\_model}. Для SVM требуется реализовать подсчёт функции потерь и её градиента. Снова нужна подготовка данных. Реализация \textbf{prepare\_svm(self, X, y)}:
 
@@ -576,7 +576,7 @@ def predict(self, X):
 	return np.argmax(scores, axis=1)
 \end{lstlisting}
 
-\subsection{Минимизация кросс-энтропии (Softmax)}
+\subsection{Реализация метода минимизации кросс-энтропии (Softmax)}
 
 Всё, что нужно для реализации - написать метод \textbf{loss\_and\_grad\_ softmax(self, X, y)}. Вся остальная часть заложена в уже реализованных \textbf{fit} и \textbf{adam}. 
 \begin{lstlisting}
@@ -621,7 +621,7 @@ results = np.zeros([len(sigmas), 5])
 
 lin_m = mm.one_weight_linear_model(method='linprog')
 rel_m = mm.one_weight_linear_model(method='relax')
-log_m = mm.one_weight_linear_model(method='logistic')
+log_m = mm.one_weight_linear_model(method='approx')
 soft_m = mm.many_weight_linear_model(method='softmax')
 svn_m = mm.many_weight_linear_model(method='svm')
 models = [lin_m, rel_m, log_m, soft_m, svn_m]
@@ -636,7 +636,7 @@ models = [lin_m, rel_m, log_m, soft_m, svn_m]
 \label{pic:im1}
 \end{figure}
 
-На тестах оказалось, что при увеличении числа признаков довольно сильно начинает проигрывать по веремни работы классификатор, отнованный на решении задачи линейного программирования и логистическая регрессия.
+На тестах оказалось, что при увеличении числа признаков довольно сильно начинает проигрывать по веремни работы классификатор, основанный на решении задачи линейного программирования и метод аппроксимации.
 
 Также его точно сильно флуктуирует. Отбросим его для следующих датасетов с большим числом признаков.
 
@@ -690,7 +690,7 @@ y1 = np.concatenate((np.ones(int(train_size / 2)), np.zeros(train_size - int(tra
 \begin{itemize}
 \item Релаксационный метод
 \item Метод сведения к линейному программированию
-\item Логистическая регрессия
+\item Метод аппроксимации гладкой функцией
 \item Метод опорных векторов
 \item Метод минимизации кросс-энтропии
 \end{itemize}
@@ -704,7 +704,7 @@ y1 = np.concatenate((np.ones(int(train_size / 2)), np.zeros(train_size - int(tra
 
 \paragraph{Классификатор, сводящий задачу к линейному программированию}продемонстрировал себя чуть хуже остальных по доле верных предсказаний и был самым медленным. Однако его плюс в том, что если система заранее разделима, то мы сразу получим $\varepsilon \geq 0$, в случае $\varepsilon=0$ нам нужно убедиться, что веса модели не занулились. Неравенство $|\w| > 0$ говорит о том, что есть нормаль к двум полуплоскостям, в которых находятся объекты классов. То есть сведение задачи к линейному программированию позволяет сказать, есть ли между начальными данными разделяющая гиперплоскость.
 
-\paragraph{Логистическая регрессия}, чего и следовало ожидать, проявила себя хорошо и в плане точности предсказаний, и в плане времени работы. 
+\paragraph{Аппроксимация гладкой функцией}, чего и следовало ожидать, проявила себя хорошо и в плане точности предсказаний, и в плане времени работы. 
 
 \paragraph{Релаксадионный метод} также оказался достаточно хорош и работал быстрее остальных. Можно заключить, что он вполне жизнеспособен при условии, что есть уверенность, что и обучающая, и тренировочная выборка достаточно схожи. Основной плюс данного классификатора в высокой скорости работы.
 
@@ -717,6 +717,42 @@ y1 = np.concatenate((np.ones(int(train_size / 2)), np.zeros(train_size - int(tra
 \begin{thebibliography}{99}
 \bibitem{agmon} The relaxation method for linear inequalities, Canad. J. Math. 6(1954), 382-392.
 \bibitem{cs231} CS231n Convolutional Neural Networks for Visual Recognition \url{http://cs231n.github.io/linear-classify/}
+
+\bibitem{1} Айвазян С. А., Бухштабер В. М., Енюков И. С., Мешалкин Л. Д. Прикладная статистика: классификация и снижение размерности. — М.: Финансы и статистика, 1989.
+\bibitem{2} Вапник В. Н., Червоненкис А. Я. Теория распознавания образов. — М.: Наука, 1974. — 416 с.  
+\bibitem{3} Вапник В. Н. Восстановление зависимостей по эмпирическим данным. — М.: Наука, 1979. — 448 с.  
+\bibitem{4} Дуда Р., Харт П. Распознавание образов и анализ сцен. — М.: Мир, 1976.
+\bibitem{5} Hastie, T., Tibshirani, R., Friedman, J. The Elements of Statistical Learning, 2nd edition. — Springer, 2009. — 533 p.  
+\bibitem{6} Langford J. Tutorial on Practical Prediction Theory for Classification. — 2005. — 28 P.
+\bibitem{7} McAllester D. Simplified PAC-Bayesian Margin Bounds. — 2003.
+
+\bibitem{8} Анисимов Б.В., Курганов В.Д., Злобин В.К. Распознавание и цифровая обработка
+изображений. - М.: Высшая школа, 1983. - 295 с.
+\bibitem{9} Горелик А.Л., Скрипкин В.А. Методы распознавания. - М.: Высшая школа, 1984. -
+208с.
+\bibitem{10} Дуда Р., Харт П. Распознавание образов и анализ сцен: Пер. с англ. - М.: Мир,
+1976. - 512 с.
+\bibitem{13} Ту Дж., Гонсалес Р. Принципы распознавания образов: Пер. с англ. - М.: Мир,
+1978. - 412с.
+\bibitem{14} Фомин Я.А., Тарловский Г.Р. Статистическая теория распознавания образов. – М.:
+Радио и связь, 1986. – 264с.
+\bibitem{15} Фукунага К. Введение в статистическую теорию распознавания образов: Пер. с
+англ. - М.: Наука, 1979. - 368с. 
+
+Hastie T., Tibshirani R., Friedman J. The Elements of Statistical Learning. —
+Springer, 2001.
+\bibitem{11} Hebb D. The organization of behavior. — New York: Wiley, 1949.
+\bibitem{12} LeCun Y., Bottou L., Orr G. B., Muller K.-R. Efficient BackProp // Neural
+Networks: tricks of the trade. — Springer, 1998.
+\bibitem{16} McCulloch W. S., Pitts W. A logical calculus of ideas immanent in nervous activity //
+Bulletin of Mathematical Biophysics. — 1943. — no. 5. — Pp. 115–133.
+\bibitem{17} Mercer J. Functions of positive and negative type and their connection with the
+theory of integral equations // Philos. Trans. Roy. Soc. London. — 1909. — Vol. A,
+no. 209. — Pp. 415–446.
+\bibitem{18} Novikoff A. B. J. On convergence proofs on perceptrons // Proceedings of the
+Symposium on the Mathematical Theory of Automata. — Vol. 12. — Polytechnic
+Institute of Brooklyn, 1962. — Pp. 615–622
+
 \end{thebibliography}
 
 \end{document}
